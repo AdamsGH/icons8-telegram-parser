@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Получение токена и списка разрешенных пользователей из переменных окружения
 TOKEN = os.getenv('TOKEN')
 ALLOWED_USER_IDS = os.getenv('ALLOWED_USER_IDS').split(',')
+SIZE = 1024
 
 def start(update: Update, context: CallbackContext) -> None:
     user_id = update.effective_user.id
@@ -107,7 +108,7 @@ def handle_url(update: Update, context: CallbackContext) -> None:
                     srcset = img_tag.get('srcset')
                     href = a_tag.get('href')
 
-                    srcset = srcset.replace('size=48', 'size=1024').replace('size=96', 'size=1024')
+                    srcset = srcset.replace('size=48', f'size={SIZE}').replace(f'size=64', f'size={SIZE}').replace('size=96', f'size={SIZE}')
 
                     writer.writerow([name, srcset, href])
 
