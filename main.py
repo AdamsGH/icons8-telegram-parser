@@ -1,6 +1,7 @@
 import logging
 import shutil
 import os
+import re
 import csv
 import requests
 import time
@@ -26,6 +27,12 @@ def start(update: Update, context: CallbackContext) -> None:
         return
     update.message.reply_text(f'Привет! Отправь мне URL формата `https://icons8.com/icon/set/nature/dusk` и я скачаю все иконки с этой страницы.', parse_mode='Markdown')
     logger.info(f"User {update.effective_user['username']} started the conversation.")
+
+def is_valid_url(url):
+    regex = re.compile(
+        r'^http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$'
+    )
+    return re.match(regex, url) is not None
 
 def handle_url(update: Update, context: CallbackContext) -> None:
     user_id = update.effective_user.id
@@ -116,6 +123,12 @@ def handle_url(update: Update, context: CallbackContext) -> None:
     urls = update.message.text.split('\n')  # Разделение текста сообщения на список ссылок по новым строкам
     chat_id = update.message.chat_id
 
+    # Проверка валидности ссылок
+    valid_urls = [url for url in urls if is_valid_url(url)]
+    if len(valid_urls) != len(urls):
+        update.message.reply_text('Некоторые из ваших ссылок недействительны или имеют неправильный формат. Пожалуйста, отправьте ссылки, разделенные новой строкой.')
+        return
+    
     # Создаем папку для хранения всех папок с иконками
     os.makedirs('icons', exist_ok=True)
     message = context.bot.send_message(chat_id=chat_id, text='Скачиваю иконки')
