@@ -9,13 +9,13 @@
 1. Клонируйте репозиторий:
 
 ```bash
-git clone https://github.com/your_username/your_repository.git 
+git clone https://github.com/AdamsGH/icons8-telegram-parser.git 
 ```
 
 2. Перейдите в директорию проекта:
 
 ```bash
-cd your_repository
+cd icons8-telegram-parser
 ```
 
 3. Установите необходимые зависимости:
