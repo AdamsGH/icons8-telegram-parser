@@ -6,6 +6,8 @@ services:
     shm_size: 2g
     ports:
       - "4444:4444"
+    environment:
+      - RID_MAX_SESSION=10
   web:
     image: icons8
     build: .
@@ -14,6 +16,11 @@ services:
     command: /bin/bash -c "sleep 5 && python main.py"
     depends_on:
       - selenium
+    shm_size: 4g
     environment:
+      - SE_NODE_SESSION_TIMEOUT=1000
+      - NODE_MAX_INSTANCES=10
+      - NODE_MAX_SESSION=10
+      - HUB_HOST=selenium
       - TOKEN
       - ALLOWED_USER_IDS

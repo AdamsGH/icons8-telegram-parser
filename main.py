@@ -34,14 +34,12 @@ def handle_url(update: Update, context: CallbackContext) -> None:
     if str(user_id) not in ALLOWED_USER_IDS:
         update.message.reply_text('Вы не авторизованы для выполнения этой команды.')
         return
-    url = update.message.text
+    urls = update.message.text.split()  # Разделение текста сообщения на список ссылок
     chat_id = update.message.chat_id
 
-    context.bot.send_message(chat_id=chat_id, text='Скачиваю иконки...')
-    logger.info(f"User {update.effective_user['username']} requested icons from {url}.")
+    # Создаем папку для хранения всех папок с иконками
+    os.makedirs('icons', exist_ok=True)
 
-    # Ваш код начинается здесь
-    # ...
     def download_file(name, srcset, folder_name):
         img_url = srcset.split(' ')[0]
         response = requests.get(img_url)
@@ -62,74 +60,81 @@ def handle_url(update: Update, context: CallbackContext) -> None:
                         name, srcset, _ = row
                         executor.submit(download_file, name, srcset, folder_name)
 
-    # Подключение к контейнеру Docker
-    driver = webdriver.Remote(
-        command_executor='http://selenium:4444/wd/hub',  # Адрес контейнера Docker
-        desired_capabilities={'browserName': 'chrome', 'javascriptEnabled': True}
-    )
+    def process_url(url):
+        message = context.bot.send_message(chat_id=chat_id, text='Скачиваю иконки')
+        logger.info(f"User {update.effective_user['username']} requested icons from {url}.")
+        message_id = message.message_id
 
-    driver.get(url)
+        try:
+            driver = webdriver.Remote(
+                command_executor='http://selenium:4444/wd/hub',  
+                desired_capabilities={'browserName': 'chrome', 'javascriptEnabled': True}
+            )
 
-    # Прокрутка страницы до конца
-    SCROLL_PAUSE_TIME = 5
+            driver.get(url)
 
-    while True:
-        icons = driver.find_elements(By.CSS_SELECTOR, 'div.grid-icons__item.app-grid-icon')
-        if icons:
-            driver.execute_script("arguments[0].scrollIntoView();", icons[-1])
+            SCROLL_PAUSE_TIME = 2
 
-        time.sleep(SCROLL_PAUSE_TIME)
+            while True:
+                icons = driver.find_elements(By.CSS_SELECTOR, 'div.grid-icons__item.app-grid-icon')
+                if icons:
+                    driver.execute_script("arguments[0].scrollIntoView();", icons[-1])
 
-        new_icons = driver.find_elements(By.CSS_SELECTOR, 'div.grid-icons__item.app-grid-icon')
-        if len(new_icons) <= len(icons):
-            break
+                time.sleep(SCROLL_PAUSE_TIME)
 
-    # Проверяем, сколько иконок найдено Selenium
-    icons = driver.find_elements(By.CSS_SELECTOR, 'div.grid-icons__item.app-grid-icon')
-    print(f"Found {len(icons)} icons")
+                new_icons = driver.find_elements(By.CSS_SELECTOR, 'div.grid-icons__item.app-grid-icon')
+                if len(new_icons) <= len(icons):
+                    break
 
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+            icons = driver.find_elements(By.CSS_SELECTOR, 'div.grid-icons__item.app-grid-icon')
 
-    icons = soup.find_all('div', class_='grid-icons__item app-grid-icon')
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-    if not icons:
-        print("No icons found on the page.")
-        exit(1)
+            icons = soup.find_all('div', class_='grid-icons__item app-grid-icon')
 
-    folder_name = url.split('/')[-2]
+            if not icons:
+                print("No icons found on the page.")
+                exit(1)
 
-    with open('icons.csv', 'w', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Name', 'Srcset', 'Href'])
+            folder_name = url.split('/')[-2]
 
-        for icon in icons:
-            a_tag = icon.find('a', class_='app-grid-icon__link')
-            img_tag = icon.find('img')
-            name = img_tag.get('alt', '').replace(' icon', '')
-            srcset = img_tag.get('srcset')
-            href = a_tag.get('href')
+            with open('icons.csv', 'w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                writer.writerow(['Name', 'Srcset', 'Href'])
 
-            srcset = srcset.replace('size=48', 'size=1024').replace('size=96', 'size=1024')
+                for icon in icons:
+                    a_tag = icon.find('a', class_='app-grid-icon__link')
+                    img_tag = icon.find('img')
+                    name = img_tag.get('alt', '').replace(' icon', '')
+                    srcset = img_tag.get('srcset')
+                    href = a_tag.get('href')
 
-            writer.writerow([name, srcset, href])
+                    srcset = srcset.replace('size=48', 'size=1024').replace('size=96', 'size=1024')
 
-    download_files_from_csv('icons.csv', folder_name)
+                    writer.writerow([name, srcset, href])
 
-    driver.quit()
+            download_files_from_csv('icons.csv', 'icons/' + folder_name)
+            # Упаковываем папку 'icons' в архив и отправляем её
+            context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='Скачивание завершено. Создаю архив...')
+            shutil.make_archive('icons', 'zip', 'icons')
+            context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"Архив создан, [отправляю]({url})", parse_mode='Markdown')
+            with open('icons.zip', 'rb') as file:
+                context.bot.send_document(chat_id=chat_id, document=file)
+            logger.info(f"Icons from {urls} downloaded and sent to user {update.effective_user['username']}.")
 
-    # Ваш код заканчивается здесь
+        except Exception as e:
+            logger.error(f"Error while processing {url}: {e}")
+        finally:
+            driver.quit()
+            time.sleep(2)
 
-    context.bot.send_message(chat_id=chat_id, text='Скачивание завершено. Создаю архив...')
-    shutil.make_archive(folder_name, 'zip', folder_name)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for url in urls:
+            executor.submit(process_url, url)
 
-    context.bot.send_message(chat_id=chat_id, text='Архив создан. Отправляю архив...')
-    with open(f'{folder_name}.zip', 'rb') as file:
-        context.bot.send_document(chat_id=chat_id, document=file)
-    logger.info(f"Icons from {url} downloaded and sent to user {update.effective_user['username']}.")
-
-    # Удаление папки и архива после отправки
-    shutil.rmtree(folder_name)
-    os.remove(f'{folder_name}.zip')
+    # Удаление папки 'icons' и архива после отправки
+    shutil.rmtree('icons')
+    os.remove('icons.zip')
 
 def error(update: Update, context: CallbackContext):
     logger.warning('Update "%s" caused error "%s"', update, context.error)
